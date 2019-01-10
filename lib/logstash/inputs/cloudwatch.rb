@@ -137,6 +137,10 @@ class LogStash::Inputs::CloudWatch < LogStash::Inputs::Base
     case namespace
     when 'AWS/EC2'
       false
+    when 'AWS/ELB'
+      false
+    when 'AWS/SQS'
+      false
     else
       true
     end
@@ -244,6 +248,7 @@ class LogStash::Inputs::CloudWatch < LogStash::Inputs::Base
     @clients ||= Hash.new do |client_hash, namespace|
       namespace = namespace[4..-1] if namespace[0..3] == 'AWS/'
       namespace = 'EC2' if namespace == 'EBS'
+      namespace = 'ElasticLoadBalancing' if namespace == 'ELB'
       cls = Aws.const_get(namespace)
       # TODO: Move logger configuration into mixin.
       client_hash[namespace] = cls::Client.new(aws_options_hash.merge(:logger => @logger))
@@ -295,6 +300,8 @@ class LogStash::Inputs::CloudWatch < LogStash::Inputs::Base
   #
   # @return [Array]
   def aws_filters
+    return [] unless @filters
+
     @filters.collect do |key, value|
       if @combined
         { name: key, value: value }
@@ -319,13 +326,25 @@ class LogStash::Inputs::CloudWatch < LogStash::Inputs::Base
 
       { 'InstanceId' => instances }
     when 'AWS/EBS'
-      volumes = clients[@namespace].describe_volumes(filters: aws_filters)[:volumes].collect do |a|
+      volumes = clients[@namespace].describe_volumes(filter_options)[:volumes].collect do |a|
         a[:attachments].collect{ |v| v[:volume_id] }
       end.flatten
 
       @logger.debug "AWS/EBS Volumes: #{volumes}"
 
       { 'VolumeId' => volumes }
+    when 'AWS/ELB'
+      load_balancers = clients[@namespace].describe_load_balancers(filter_options)[:load_balancer_descriptions].flat_map { |e| e[:load_balancer_name] }
+
+      @logger.debug "AWS/ELB ELBs: #{load_balancers}"
+
+      { 'LoadBalancerName' => load_balancers }
+    when 'AWS/SQS'
+      queues = clients[@namespace].list_queues(filter_options)[:queue_urls].collect { |q| q.split('/')[-1] }
+
+      @logger.debug "AWS/SQS Queuess: #{queues}"
+
+      { 'QueueName' => queues }
     else
       @filters
     end
