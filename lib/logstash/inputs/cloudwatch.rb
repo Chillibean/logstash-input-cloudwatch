@@ -106,6 +106,11 @@ class LogStash::Inputs::CloudWatch < LogStash::Inputs::Base
   # Must be at least 60 seconds and in multiples of 60.
   config :period, :validate => :number, :default => (60 * 5)
 
+  # Set the delay of the returned datapoints.
+  #
+  # defaults to 5 mins
+  config :delay, :validate => :number, :default => (60 * 5)
+
   # Specify the filters to apply when fetching resources:
   #
   #     Instances: { 'instance-id' => 'i-12344321' }
@@ -184,13 +189,16 @@ class LogStash::Inputs::CloudWatch < LogStash::Inputs::Base
       # For every resource in the dimension
       dim_resources = *dim_resources
       dim_resources.each do |resource|
+
         @logger.debug "Polling resource #{dimension}: #{resource}"
 
         options = metric_options(@namespace, metric)
         options[:dimensions] = [ { name: dimension, value: resource } ]
 
+        @logger.debug "Get Metric Stats [#{resource}]: #{options}"
         datapoints = clients['CloudWatch'].get_metric_statistics(options)
-        @logger.debug "DPs: #{datapoints.data}"
+
+        @logger.debug "DPs [#{resource}]: #{datapoints.data}"
         # For every event in the resource
         datapoints[:datapoints].each do |datapoint|
           event_hash = datapoint.to_hash.update(options)
@@ -289,8 +297,8 @@ class LogStash::Inputs::CloudWatch < LogStash::Inputs::Base
     {
       namespace: namespace,
       metric_name: metric,
-      start_time: (Time.now - @interval).iso8601,
-      end_time: Time.now.iso8601,
+      start_time: (Time.now - @interval - @delay).iso8601,
+      end_time: (Time.now - @delay).iso8601,
       period: @period,
       statistics: @statistics
     }
