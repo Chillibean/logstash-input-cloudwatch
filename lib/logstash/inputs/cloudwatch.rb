@@ -201,7 +201,7 @@ class LogStash::Inputs::CloudWatch < LogStash::Inputs::Base
         @logger.debug "DPs [#{resource}]: #{datapoints.data}"
         # For every event in the resource
         datapoints[:datapoints].each do |datapoint|
-          event_hash = datapoint.to_hash.update(options).update(@metadata[resource].nil? ? {} : @metadata[resource])
+          event_hash = datapoint.to_hash.update(options).update(@metadatarecs[resource].nil? ? {} : @metadatarecs[resource])
           event_hash[dimension.to_sym] = resource
           event = LogStash::Event.new(cleanup(event_hash))
           decorate(event)
