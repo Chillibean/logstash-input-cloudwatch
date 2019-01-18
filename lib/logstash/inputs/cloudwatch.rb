@@ -201,7 +201,7 @@ class LogStash::Inputs::CloudWatch < LogStash::Inputs::Base
         @logger.debug "DPs [#{resource}]: #{datapoints.data}"
         # For every event in the resource
         datapoints[:datapoints].each do |datapoint|
-          event_hash = datapoint.to_hash.update(options)
+          event_hash = datapoint.to_hash.update(options).update(@metadata[resource].nil? ? {} : @metadata[resource])
           event_hash[dimension.to_sym] = resource
           event = LogStash::Event.new(cleanup(event_hash))
           decorate(event)
@@ -326,12 +326,28 @@ class LogStash::Inputs::CloudWatch < LogStash::Inputs::Base
   #
   # @return [Array]
   def resources
+    @metadatarecs = {}
     case @namespace
-      when 'AWS/EC2'
-        instances = clients[@namespace].describe_instances(filter_options)[:reservations].collect do |r|
-          r[:instances].collect{ |i| i[:instance_id] }
-        end.flatten
-
+    when 'AWS/EC2'
+      instancelist = clients[@namespace].describe_instances(filter_options)
+      instances = instancelist[:reservations].collect do |r|
+        r[:instances].collect{ |i| i[:instance_id] }
+      end.flatten
+      
+      instancelist.reservations.each do |r|
+        r.instances.each do |i|
+          instancerec = {}
+          instancerec["private_dns_name"] = i.private_dns_name
+          instancerec["instance_id"] = i.placement.availability_zone
+          instancerec["instance_id"] = i.private_ip_address
+          instancerec["image_id"] = i.image_id
+          i.tags.each do | t|
+            instancerec["tag.#{t.key}"] = "#{t.value}"
+          end
+          @metadatarecs[i.instance_id] = instancerec
+        end
+      end
+      
       { 'InstanceId' => instances }
     when 'AWS/EBS'
       volumes = clients[@namespace].describe_volumes(filter_options)[:volumes].collect do |a|
