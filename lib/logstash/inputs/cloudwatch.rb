@@ -358,8 +358,21 @@ class LogStash::Inputs::CloudWatch < LogStash::Inputs::Base
 
       { 'VolumeId' => volumes }
     when 'AWS/ELB'
-      load_balancers = clients[@namespace].describe_load_balancers(filter_options)[:load_balancer_descriptions].flat_map { |e| e[:load_balancer_name] }
+      lblist = clients[@namespace].describe_load_balancers(filter_options)
+      load_balancers = lblist[:load_balancer_descriptions].flat_map { |e| e[:load_balancer_name] }
 
+      lbrec = {}
+      lblist.load_balancer_descriptions.each do |l|
+        lbrec = {}
+        lbrec["instances"] = l.instances.collect { |i| i.instance_id }
+        tags = client.describe_tags({ load_balancer_names: [l.load_balancer_name ], })
+        tags.tag_descriptions.each do |td|
+          td.tags.each do |t|
+            lbrec["tag.#{t.key}"] = t.value
+          end
+        end
+        @metadatarecs[l.load_balancer_name]=lbrec
+      end
       @logger.debug "AWS/ELB ELBs: #{load_balancers}"
 
       { 'LoadBalancerName' => load_balancers }
